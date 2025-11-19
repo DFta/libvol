@@ -36,6 +36,10 @@ Ninja / Linux / macOS
 MSVC / Windows
 .\build\Release\vol_tests.exe
 ```
+Run demo:
+```bash
+.\build\Release\demo.exe
+```
 
 (use / if on linux or macos)
 
