@@ -102,7 +102,6 @@ int main(){
         std::cout << "Enter time to expiration, days: ";
         std::cin >> T;
         T /= 365.0;
-        std::cout << T;
         if (type == 6){
             std::cout << "Enter current option price: ";
             std::cin >> iv_price;
