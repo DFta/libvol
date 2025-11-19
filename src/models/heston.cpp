@@ -17,14 +17,16 @@ using Complex = std::complex<double>;
 constexpr Complex I(0.0, 1.0);
 
 Complex characteristic(const Complex& u,
-                       double logS,
-                       double drift,
-                       double T,
-                       const Params& p) {
+                        double logS,
+                        double drift,
+                        double T,
+                        const Params& p) {
     const double sigma = p.sigma;
+
     if (sigma <= 0.0) {
         throw std::invalid_argument("Heston vol-of-vol sigma must be positive");
     }
+    
     const double sigma2 = sigma * sigma;
     const Complex iu = I * u;
     const Complex beta = static_cast<double>(p.kappa) - p.rho * sigma * iu;
@@ -70,7 +72,7 @@ double price_cf(double S,
     const double disc_r = std::exp(-r * T);
     const double disc_q = std::exp(-q * T);
 
-    const auto& rule = vol::math::gauss_laguerre_rule(n_gl);
+    const auto& rule = vol::quad::gauss_laguerre_rule(n_gl);
     const Complex phi_minus_i = characteristic(-I, logS, drift, T, params);
 
     double integral_p1 = 0.0;

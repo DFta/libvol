@@ -70,10 +70,16 @@ add_executable(vol_tests
 target_link_libraries(vol_tests PRIVATE vol Catch2::Catch2WithMain)
 add_test(NAME vol_tests COMMAND vol_tests)
 
-# SVI example / test
-add_executable(svi_slice_demo examples/svi_slice_demo.cpp)
-target_include_directories(svi_slice_demo PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(svi_slice_demo PRIVATE vol) 
+# Examples
+function(add_vol_example target source)
+    add_executable(${target} ${source})
+    target_link_libraries(${target} PRIVATE vol)
+    target_include_directories(${target} PRIVATE ${CMAKE_SOURCE_DIR}/include)
+endfunction()
+
+add_vol_example(svi_slice_demo examples/svi_slice_demo.cpp)
+add_vol_example(bs_demo examples/bs_demo.cpp)
+add_vol_example(demo examples/demo.cpp)
 
 
 # Benchmarks

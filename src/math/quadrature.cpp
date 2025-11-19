@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace vol::math {
+namespace vol::quad {
 
 namespace {
 
@@ -89,4 +89,4 @@ const GaussLaguerreRule& gauss_laguerre_rule(int n) {
     return inserted_it->second;
 }
 
-} // namespace vol::math
+} // namespace vol::quad

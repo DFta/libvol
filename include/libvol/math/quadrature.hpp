@@ -2,7 +2,7 @@
 
 #include <vector>
 
-namespace vol::math {
+namespace vol::quad {
 
 struct GaussLaguerreRule {
     std::vector<double> nodes;
@@ -13,4 +13,4 @@ struct GaussLaguerreRule {
 // Results are cached per-order and reused.
 const GaussLaguerreRule& gauss_laguerre_rule(int n);
 
-} // namespace vol::math
+} // namespace vol::quad

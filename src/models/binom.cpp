@@ -29,8 +29,7 @@ namespace {
 
     //CRR engine
     double price_crr(double S0, double K, double r, double q, double T, double vol,
-                    int steps, bool is_call, bool is_american, int* early_ex_step_out)
-    {
+                    int steps, bool is_call, bool is_american, int* early_ex_step_out){
         if (steps <= 0) {
             // degenerate: fallback to intrinsic at expiry
             return std::exp(-r*T) * intrinsic(is_call, S0 * std::exp((r - q - 0.5*vol*vol)*T), K);
@@ -87,8 +86,7 @@ namespace {
     }
 } // namespace
 
-double price(double S, double K, double r, double q, double T, double vol, int steps, bool is_call, bool is_american)
-{
+double price(double S, double K, double r, double q, double T, double vol, int steps, bool is_call, bool is_american){
     return price_crr(S, K, r, q, T, vol, steps, is_call, is_american, nullptr);
 }
 

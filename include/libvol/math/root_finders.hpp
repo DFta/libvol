@@ -73,4 +73,4 @@ inline Result newton(std::function<void(double,double&,double&)> f_df,
         }
         return {b,maxit,false};
     }
-}
+} // namespace vol::root
