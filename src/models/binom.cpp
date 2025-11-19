@@ -101,37 +101,46 @@ BinomialResult price_w_info(double S, double K, double r, double q, double T,
 PriceGreeks price_greeks(double S, double K, double r, double q, double T, double vol, int steps, bool is_call, bool is_american)
 {
     const double base = price(S, K, r, q, T, vol, steps, is_call, is_american);
-
+    //Step Sizes
+    //Small step for Delta Rho & Vega (precision)
     const double hS   = std::max(1e-8, 1e-4 * std::max(1.0, S));
     const double hvol = std::max(1e-8, 1e-4 * std::max(1.0, vol));
-    const double hr = std::max(1e-8, 1e-5 * std::max(1.0, std::fabs(r)));
-    double hT = safe_dt_for_theta(T); // years
+    const double hr   = std::max(1e-8, 1e-5 * std::max(1.0, std::fabs(r)));
+    
+    // Large step specifically for Binomial Gamma (smoothing), 1% of spot
+    const double hS_binom = std::max(1e-4, 0.01 * S); 
+    
+    double hT = safe_dt_for_theta(T); 
 
-    // Delta & Gamma (central on S)
-    const double p_sp = price(S + hS, K, r, q, T, vol, steps, is_call, is_american);
-    const double p_sm = price(std::max(1e-12, S - hS), K, r, q, T, vol, steps, is_call, is_american);
-    const double delta = (p_sp - p_sm) / (2.0 * hS);
-    const double gamma = (p_sp - 2.0 * base + p_sm) / (hS * hS);
+    //Delta (Standard Finite Difference with small hS)
+    const double p_delta_up = price(S + hS, K, r, q, T, vol, steps, is_call, is_american);
+    const double p_delta_dn = price(std::max(1e-12, S - hS), K, r, q, T, vol, steps, is_call, is_american);
+    const double delta = (p_delta_up - p_delta_dn) / (2.0 * hS);
 
-    // Vega (central on vol)
+    //Gamma (Wide Finite Difference with hS_binom)
+    const double p_gamma_up = price(S + hS_binom, K, r, q, T, vol, steps, is_call, is_american);
+    const double p_gamma_dn = price(std::max(1e-12, S - hS_binom), K, r, q, T, vol, steps, is_call, is_american);
+    const double gamma = (p_gamma_up - 2.0 * base + p_gamma_dn) / (hS_binom * hS_binom);
+
+    //Vega 
     const double p_vp = price(S, K, r, q, T, vol + hvol, steps, is_call, is_american);
     const double p_vm = price(S, K, r, q, T, std::max(1e-12, vol - hvol), steps, is_call, is_american);
     const double vega = (p_vp - p_vm) / (2.0 * hvol);
 
-    // Rho (central on r)
+    //Rho 
     const double p_rp = price(S, K, r + hr, q, T, vol, steps, is_call, is_american);
     const double p_rm = price(S, K, std::max(-0.999, r - hr), q, T, vol, steps, is_call, is_american);
     const double rho = (p_rp - p_rm) / (2.0 * hr);
 
-    // Theta (central on T, change per year)
+    //Theta
     double theta;
     if (T > hT) {
         const double p_tp = price(S, K, r, q, T + hT, vol, steps, is_call, is_american);
         const double p_tm = price(S, K, r, q, T - hT, vol, steps, is_call, is_american);
-        theta = (p_tp - p_tm) / (2.0 * hT);
+        theta = (p_tm - p_tp) / (2.0 * hT); 
     } else {
         const double p_tp = price(S, K, r, q, T + hT, vol, steps, is_call, is_american);
-        theta = (p_tp - base) / hT;
+        theta = -(p_tp - base) / hT; 
     }
 
     return {base, delta, gamma, vega, theta, rho};
