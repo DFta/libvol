@@ -4,10 +4,16 @@
 
 
 namespace vol::calib {
-struct LSQResult {std::vector<double> x; double obj; int iters; bool converged;};
+struct LSQResult {
+    std::vector<double> x;
+    double obj;
+    int iters;
+    double grad_norm;
+    double cond_proxy;
+    bool converged;
+};
 
-//placeholder signature
-LSQResult lbfgsb(
+LSQResult projected_gradient_descent(
 const std::vector<double>& x0,
 const std::vector<double>& lb,
 const std::vector<double>& ub,

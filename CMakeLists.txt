@@ -40,7 +40,10 @@ add_library(vol STATIC
     src/models/binom.cpp
     src/models/heston.cpp
     src/models/svi.cpp
+    src/models/vol_surface.cpp
     src/math/quadrature.cpp
+    src/calib/calibrator.cpp
+    src/calib/heston.cpp
     src/calib/svi_slice.cpp
     src/calib/least_squares.cpp
     )
@@ -66,6 +69,9 @@ add_executable(vol_tests
     tests/test_binom.cpp
     tests/test_svi_slice.cpp
     tests/test_heston.cpp
+    tests/test_calibration.cpp
+    tests/test_surface.cpp
+    tests/test_gbm.cpp
     )
 target_link_libraries(vol_tests PRIVATE vol Catch2::Catch2WithMain)
 add_test(NAME vol_tests COMMAND vol_tests)
@@ -80,6 +86,8 @@ endfunction()
 add_vol_example(svi_slice_demo examples/svi_slice_demo.cpp)
 add_vol_example(bs_demo examples/bs_demo.cpp)
 add_vol_example(demo examples/demo.cpp)
+add_vol_example(heston_calib_demo examples/heston_calib_demo.cpp)
+add_vol_example(svi_surface_demo examples/svi_surface_demo.cpp)
 
 
 # Benchmarks

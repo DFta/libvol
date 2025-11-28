@@ -134,13 +134,13 @@ PriceGreeks price_greeks(double S, double K, double r, double q, double T, doubl
 
     //Theta
     double theta;
-    if (T > hT) {
+    if (T >= 2.0 * hT) {
         const double p_tp = price(S, K, r, q, T + hT, vol, steps, is_call, is_american);
         const double p_tm = price(S, K, r, q, T - hT, vol, steps, is_call, is_american);
-        theta = (p_tm - p_tp) / (2.0 * hT); 
+        theta = -(p_tp - p_tm) / (2.0 * hT);
     } else {
-        const double p_tp = price(S, K, r, q, T + hT, vol, steps, is_call, is_american);
-        theta = -(p_tp - base) / hT; 
+        const double p_tm = price(S, K, r, q, std::max(1e-5, T - hT), vol, steps, is_call, is_american);
+        theta = -(base - p_tm) / hT;
     }
 
     return {base, delta, gamma, vega, theta, rho};

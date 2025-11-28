@@ -76,17 +76,30 @@ GaussLaguerreRule build_rule(int n) {
 } // namespace
 
 const GaussLaguerreRule& gauss_laguerre_rule(int n) {
+    // Fast-path
+    if (n == 32) {
+        static const auto rule = build_rule(32);
+        return rule;
+    }
+    if (n == 64) {
+        static const auto rule = build_rule(64);
+        return rule;
+    }
+    if (n == 128) {
+        static const auto rule = build_rule(128);
+        return rule;
+    }
+
+    // Slow-path
     static std::mutex mtx;
     static std::unordered_map<int, GaussLaguerreRule> cache;
-
+    
     std::lock_guard<std::mutex> lock(mtx);
     auto it = cache.find(n);
     if (it != cache.end()) {
         return it->second;
     }
-    auto [inserted_it, inserted] = cache.emplace(n, GaussLaguerreRule{});
-    inserted_it->second = build_rule(n);
-    return inserted_it->second;
+    return cache.emplace(n, build_rule(n)).first->second;
 }
 
 } // namespace vol::quad

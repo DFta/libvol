@@ -5,8 +5,32 @@
 
 namespace vol::calib {
 
-// super simple projected gradient "LBFGS-B-like" placeholder so that compiling works
-LSQResult lbfgsb(
+namespace {
+
+double grad_norm(const std::vector<double>& g) {
+    double n2 = 0.0;
+    for (double v : g) n2 += v * v;
+    return std::sqrt(n2);
+}
+
+double grad_condition_proxy(const std::vector<double>& g) {
+    double gmax = 0.0;
+    double gmin = std::numeric_limits<double>::infinity();
+    for (double v : g) {
+        const double av = std::abs(v);
+        gmax = std::max(gmax, av);
+        if (av > 0.0) {
+            gmin = std::min(gmin, av);
+        }
+    }
+    const double denom = (std::isfinite(gmin) && gmin > 0.0) ? gmin : 1e-12;
+    return (denom > 0.0) ? (gmax / denom) : gmax;
+}
+
+} // namespace
+
+// Projected gradient descent with a simple backtracking line search.
+LSQResult projected_gradient_descent(
     const std::vector<double>& x0,
     const std::vector<double>& lb,
     const std::vector<double>& ub,
@@ -33,15 +57,14 @@ LSQResult lbfgsb(
 
     double best_f = f;
     std::vector<double> best_x = x;
+    double best_grad = grad_norm(g);
+    double best_cond = grad_condition_proxy(g);
 
     double alpha = 1e-1;   // step
     for (int it = 0; it < maxit; ++it) {
-        // gradient norm
-        double gn = 0.0;
-        for (double v : g) gn += v * v;
-        gn = std::sqrt(gn);
+        const double gn = grad_norm(g);
         if (gn < tol) {
-            return { x, f, it+1, true };
+            return { x, f, it + 1, gn, grad_condition_proxy(g), true };
         }
 
         // take step
@@ -63,6 +86,8 @@ LSQResult lbfgsb(
             if (f < best_f) {
                 best_f = f;
                 best_x = x;
+                best_grad = grad_norm(g);
+                best_cond = grad_condition_proxy(g);
             }
             // maybe increase step a bit
             alpha = std::min(1.0, alpha * 1.2);
@@ -75,7 +100,7 @@ LSQResult lbfgsb(
         }
     }
 
-    return { best_x, best_f, maxit, false };
+    return { best_x, best_f, maxit, best_grad, best_cond, false };
 }
 
 } // namespace vol::calib

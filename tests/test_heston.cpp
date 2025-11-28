@@ -31,3 +31,10 @@ TEST_CASE("Heston Gauss-Laguerre order convergence", "[heston]") {
     const double price96 = vol::heston::price_cf(100.0, 80.0, 0.03, 0.0, 0.75, params, true, 96);
     REQUIRE(price32 == Approx(price96).margin(5e-5));
 }
+
+TEST_CASE("Heston handles Feller boundary", "[heston][edge]") {
+    const vol::heston::Params params{3.0, 0.04, std::sqrt(2.0 * 3.0 * 0.04) * 0.99, -0.3, 0.04};
+    const double call = vol::heston::price_cf(100.0, 110.0, 0.01, 0.0, 2.0, params, true, 128);
+    REQUIRE(call > 0.0);
+    REQUIRE(std::isfinite(call));
+}

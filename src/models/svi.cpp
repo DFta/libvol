@@ -1,5 +1,5 @@
 #include "libvol/models/svi.hpp"
-#include "libvol/calib/least_squares.hpp"
+#include "libvol/calib/calibrator.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -47,68 +47,61 @@ namespace vol::svi {
     static inline double local_quadratic_curvature(const std::vector<double>& k, const std::vector<double>& w, std::size_t idx_min) {
         const std::size_t n = k.size();
         if (n < 3) return 0.0;
-        std::vector<std::pair<double,double>> pts;
-        pts.reserve(std::min<std::size_t>(5, n));
 
-        std::vector<std::pair<double,std::size_t>> dist_idx;
-        dist_idx.reserve(n);
+        //5 closest points
+        std::vector<std::pair<double, std::size_t>> pts;
+        pts.reserve(n);
         const double km = k[idx_min];
-        for (std::size_t i = 0; i < n; ++i)
-            dist_idx.emplace_back(std::abs(k[i] - km), i);
-        std::sort(dist_idx.begin(), dist_idx.end(), [](auto& a, auto& b){ return a.first < b.first; });
+        for (std::size_t i = 0; i < n; ++i) {
+            pts.emplace_back(std::abs(k[i] - km), i);
+        }
+        
+        //top 5
+        std::size_t take = std::min<std::size_t>(5, n);
+        std::partial_sort(pts.begin(), pts.begin() + take, pts.end());
 
-        const std::size_t take = std::min<std::size_t>(5, n);
+        //Least Squares)
+        double S0 = 0, S1 = 0, S2 = 0, S3 = 0, S4 = 0;
+        double Sy = 0, Sxy = 0, Sx2y = 0;
+
         for (std::size_t t = 0; t < take; ++t) {
-            auto j = dist_idx[t].second;
-            pts.emplace_back(k[j] - km, w[j]); // x = k - km
-        }
-        if (pts.size() < 3) return 0.0;
-
-        double S0=0, S1=0, S2=0, S3=0, S4=0, Sy=0, Sxy=0, Sx2y=0;
-        for (auto& pr : pts) {
-            const double x = pr.first, y = pr.second;
-            const double x2 = x*x, x3 = x2*x, x4 = x2*x2;
-            S0 += 1.0; S1 += x; S2 += x2; S3 += x3; S4 += x4;
-            Sy += y;   Sxy += x*y; Sx2y += x2*y;
+            const std::size_t original_idx = pts[t].second;
+            const double x = k[original_idx] - km; 
+            const double y = w[original_idx];
+            const double x2 = x * x;
+            
+            S0 += 1.0; S1 += x; S2 += x2; S3 += x2 * x; S4 += x2 * x2;
+            Sy += y;   Sxy += x * y; Sx2y += x2 * y;
         }
 
-        double M[3][4] = {
-            {S0, S1, S2, Sy},
-            {S1, S2, S3, Sxy},
-            {S2, S3, S4, Sx2y}
-        };
-        // Gaussian elimination
-        for (int col = 0; col < 3; ++col) {
-            // pivot
-            int piv = col;
-            for (int r = col + 1; r < 3; ++r)
-                if (std::abs(M[r][col]) > std::abs(M[piv][col])) piv = r;
-            if (std::abs(M[piv][col]) < 1e-14) return 0.0; 
-            if (piv != col) for (int c = col; c < 4; ++c) std::swap(M[piv][c], M[col][c]);
-            const double inv = 1.0 / M[col][col];
-            for (int c = col; c < 4; ++c) M[col][c] *= inv;
-            for (int r = 0; r < 3; ++r) if (r != col) {
-                const double f = M[r][col];
-                for (int c = col; c < 4; ++c) M[r][c] -= f * M[col][c];
-            }
-        }
-        const double A = M[0][3];
-        const double B = M[1][3];
-        const double halfC = M[2][3];
-        (void)A; (void)B;
-        return 2.0 * halfC; // C
+        //determinant of coefficient matrix
+        const double det = S0 * (S2 * S4 - S3 * S3) - 
+                        S1 * (S1 * S4 - S2 * S3) + 
+                        S2 * (S1 * S3 - S2 * S2);
+
+        if (std::abs(det) < 1e-12) return 0.0;
+
+        //determinant replacing the 3rd column with Y vector
+        const double det_A = S0 * (S2 * Sx2y - S3 * Sxy) - 
+                            S1 * (S1 * Sx2y - S2 * Sxy) + 
+                            Sy * (S1 * S3 - S2 * S2);
+
+        //curvature is 2 * a
+        return 2.0 * (det_A / det);
     }
 
 // Per-slice
     Params fit_raw_svi(const std::vector<double>& k, const std::vector<double>& w_mkt, const std::vector<double>& wts_in)
     {
         const std::size_t n = std::min(k.size(), w_mkt.size());
-        std::vector<double> kx(k.begin(), k.begin() + n);
-        std::vector<double> wy(w_mkt.begin(), w_mkt.begin() + n);
+        if (n == 0) {
+            return Params{1e-10, 0.1, 0.0, 0.0, 0.2};
+        }
+
         if (n < 5) {
-            const double kmin = *std::min_element(kx.begin(), kx.end());
-            const double kmax = *std::max_element(kx.begin(), kx.end());
-            const double wmin = *std::min_element(wy.begin(), wy.end());
+            const double kmin = *std::min_element(k.begin(), k.begin() + n);
+            const double kmax = *std::max_element(k.begin(), k.begin() + n);
+            const double wmin = *std::min_element(w_mkt.begin(), w_mkt.begin() + n);
             const double b0 = 0.1;
             const double sigma0 = std::max(1e-3, 0.2 * (kmax - kmin));
             const double a0 = std::max(1e-10, wmin - b0 * sigma0);
@@ -117,19 +110,20 @@ namespace vol::svi {
 
         std::vector<std::size_t> idx(n);
         std::iota(idx.begin(), idx.end(), 0);
-        std::sort(idx.begin(), idx.end(), [&](std::size_t i, std::size_t j){ return kx[i] < kx[j]; });
+        std::sort(idx.begin(), idx.end(), [&](std::size_t i, std::size_t j){ return k[i] < k[j]; });
 
         std::vector<double> k_sorted(n), w_sorted(n), wt(n, 1.0);
         for (std::size_t t = 0; t < n; ++t) {
-            k_sorted[t] = kx[idx[t]];
-            w_sorted[t] = wy[idx[t]];
-            if (!wts_in.empty()) wt[t] = wts_in[idx[t]];
+            const std::size_t orig = idx[t];
+            k_sorted[t] = k[orig];
+            w_sorted[t] = w_mkt[orig];
+            if (!wts_in.empty()) wt[t] = wts_in[orig];
         }
 
         const double kmin = k_sorted.front();
         const double kmax = k_sorted.back();
-        auto [min_it, max_it] = std::minmax_element(w_sorted.begin(), w_sorted.end()); 
-        const double wrange = *max_it - *min_it;//faster than scanning twice
+        auto [min_it, max_it] = std::minmax_element(w_sorted.begin(), w_sorted.end());
+        const double wrange = *max_it - *min_it;
         const double range_k = std::max(1e-6, kmax - kmin);
 
         std::size_t i_min = 0;
@@ -159,7 +153,18 @@ namespace vol::svi {
         const std::vector<double> lb = { 1e-12, 1e-8, -0.999, kmin - 1.0 * range_k, 1e-6 };
         const std::vector<double> ub = { a_max,  10.0,  0.999, kmax + 1.0 * range_k,  5.0  };
 
-        auto f_grad = [&](const std::vector<double>& x, double& f, std::vector<double>& g) {
+        calib::CalibrationProblem problem;
+        problem.parameters = {
+            {"a", lb[0], ub[0]},
+            {"b", lb[1], ub[1]},
+            {"rho", lb[2], ub[2]},
+            {"m", lb[3], ub[3]},
+            {"sigma", lb[4], ub[4]}
+        };
+
+        problem.objective = [=,&k_sorted,&w_sorted,&wt](const std::vector<double>& x,
+                                                        double& f,
+                                                        std::vector<double>& g) {
             const double a = x[0], b = x[1], rho = x[2], m = x[3], sigma = x[4];
             const double eps = 1e-12;
             const double rho_c = clamp(rho, -0.999, 0.999);
@@ -169,14 +174,14 @@ namespace vol::svi {
             double sumw = 0.0, obj = 0.0;
             double ga = 0.0, gb = 0.0, gr = 0.0, gm = 0.0, gs = 0.0;
 
-            for (std::size_t i = 0; i < n; ++i) {
+            for (std::size_t i = 0; i < k_sorted.size(); ++i) {
                 const double wi = (i < wt.size() ? std::max(0.0, wt[i]) : 1.0);
                 if (wi <= 0.0) continue;
 
                 const double xk = k_sorted[i] - m;
                 const double R  = std::sqrt(xk * xk + s_pos * s_pos);
                 const double w_model = a + b_pos * (rho_c * xk + R);
-                const double r  = (w_model - w_sorted[i]); // residual in total variance
+                const double r  = (w_model - w_sorted[i]);
 
                 sumw += wi;
                 obj  += wi * r * r;
@@ -194,55 +199,73 @@ namespace vol::svi {
                 gs += wi * r * dw_ds;
             }
 
-            if (sumw <= 0.0) { f = 0.0; g.assign(5, 0.0); return; }
+            if (sumw <= 0.0) {
+                f = 0.0;
+                g.assign(5, 0.0);
+                return;
+            }
 
             const double inv = 1.0 / sumw;
             f = 0.5 * obj * inv;
 
-            g.resize(5);
+            g.assign(5, 0.0);
             g[0] = ga * inv;
             g[1] = gb * inv;
             g[2] = gr * inv;
             g[3] = gm * inv;
             g[4] = gs * inv;
-
-            double pen = 0.0;
-            if (b <= 0.0) { pen += (1.0 - std::tanh( 100.0 * b)); g[1] += -100.0 * inv;}
-            if (std::abs(rho) >= 1.0){ pen += std::tanh(100.0 * (std::abs(rho) - 0.999)); g[2] +=  100.0 * inv * ((rho > 0) ? 1.0 : -1.0);}
-            if (sigma <= 0.0)  { pen += (1.0 - std::tanh( 100.0 * sigma));   g[4] += -100.0 * inv; }
-            f += 1e-8 * pen;
         };
 
-        Params best_p{};
-        double best_rmse = std::numeric_limits<double>::infinity();
-        const double base_tol = 1e-8;
+        problem.penalty = [](const std::vector<double>& x, double& pen, std::vector<double>& gp) {
+            gp.assign(5, 0.0);
+            pen = 0.0;
+            const double b = x[1];
+            const double rho = x[2];
+            const double sigma = x[4];
 
-        const std::vector<std::vector<double>> starts = {
-            x0,
-            { x0[0], x0[1], clamp(x0[2] + 0.2, -0.95, 0.95), clamp(x0[3] + 0.25 * range_k, kmin - range_k, kmax + range_k), x0[4] },
-            { x0[0], x0[1], clamp(x0[2] - 0.2, -0.95, 0.95), clamp(x0[3] - 0.25 * range_k, kmin - range_k, kmax + range_k), x0[4] }
-        };
-
-        for (const auto& s : starts) {
-            auto res = calib::lbfgsb(s, lb, ub, f_grad, 500, base_tol);
-            if (res.converged && res.x.size() == 5) {
-                const double rmse = std::sqrt(std::max(0.0, 2.0 * res.obj));
-                if (rmse < best_rmse) {
-                    best_rmse = rmse;
-                    best_p = Params{ res.x[0], res.x[1], res.x[2], res.x[3], res.x[4] };
+            const auto add_quad = [&](double violation, std::size_t idx, double dir = 1.0) {
+                if (violation > 0.0) {
+                    const double scale = 10.0;
+                    pen += 0.5 * scale * violation * violation;
+                    gp[idx] += scale * violation * dir;
                 }
-            }
+            };
+
+            add_quad(std::max(0.0, 1e-6 - b), 1, -1.0);
+            add_quad(std::max(0.0, std::abs(rho) - 0.999), 2, (rho >= 0.0 ? 1.0 : -1.0));
+            add_quad(std::max(0.0, 1e-6 - sigma), 4, -1.0);
+        };
+
+        calib::CalibratorConfig solver_cfg;
+        solver_cfg.max_local_iters = 500;
+        solver_cfg.global_restarts = 6;
+        solver_cfg.grad_tol = 1e-8;
+        solver_cfg.penalty_weight = 1e-4;
+        solver_cfg.seed = 1729;
+        solver_cfg.initial_guess = x0;
+
+        const auto result = calib::run_calibration(problem, solver_cfg);
+        Params candidate{};
+        if (result.params.size() == 5) {
+            candidate = Params{ result.params[0], result.params[1], result.params[2],
+                                result.params[3], result.params[4] };
+        } else {
+            candidate = Params{ clamp(x0[0], lb[0], ub[0]),
+                                clamp(x0[1], lb[1], ub[1]),
+                                clamp(x0[2], lb[2], ub[2]),
+                                clamp(x0[3], lb[3], ub[3]),
+                                clamp(x0[4], lb[4], ub[4]) };
         }
 
-        if (!basic_no_arb(best_p)) {
-            best_p = Params{ clamp(x0[0], lb[0], ub[0]),
-                            clamp(x0[1], lb[1], ub[1]),
-                            clamp(x0[2], lb[2], ub[2]),
-                            clamp(x0[3], lb[3], ub[3]),
-                            clamp(x0[4], lb[4], ub[4]) };
+        if (!basic_no_arb(candidate)) {
+            candidate = Params{ clamp(x0[0], lb[0], ub[0]),
+                                clamp(x0[1], lb[1], ub[1]),
+                                clamp(x0[2], lb[2], ub[2]),
+                                clamp(x0[3], lb[3], ub[3]),
+                                clamp(x0[4], lb[4], ub[4]) };
         }
 
-        return best_p;
+        return candidate;
     }
 
 } // namespace vol::svi

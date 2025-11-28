@@ -5,8 +5,9 @@ A small C++20 volatility and option pricing library implementing:
 - Black-Scholes pricing + Greeks + robust implied vol solver
 - CRR binomial tree (American/European, price + Greeks + early exercise info)
 - GBM Monte Carlo with antithetic and control variate
-- SVI slice calibration on top of BS implied vols
-- Heston CF vanilla pricing (Carr-Madan/Attari + Gauss-Laguerre integration)
+- SVI slice calibration on top of BS implied vols + reusable calibration framework
+- Heston CF vanilla pricing + smile calibration (Carr-Madan/Attari + Gauss-Laguerre integration)
+- Volatility surface object with cross-maturity checks, BS projection, and Breeden-Litzenberger density extraction
 - Benchmarks (~40 ns per BS price on i7-12650H)
 - C++ and Python (pybind11) APIs
 
@@ -48,6 +49,30 @@ Run demo:
 - Heston calibration (global + local search, bounds/penalties)
 - Calibration framework (global + local), parameter bounds/penalties
 - RND extraction (Breeden-Litzenberger) + diagnostics
+
+## Theory Snapshot
+- **Black-Scholes.** Closed-form European pricing with dividends. Greeks (`delta`, `gamma`, `vega`, `theta`, `rho`) follow the textbook formulas and are validated numerically in tests even in the short-maturity/near-zero rate regime.
+- **Carr–Madan / Attari Heston pricing.** Characteristic function integration via Gauss-Laguerre quadrature. The CF is evaluated at `u-i`, the damping and drift terms follow Gatheral. You can tune the quadrature order; convergence tests are in `tests/test_heston.cpp`.
+- **SVI.** Raw SVI parameterization `w(k) = a + b ( \rho (k-m) + \sqrt{(k-m)^2 + \sigma^2})`. Calibration enforces `b>0`, `|\rho|<1`, `\sigma>0`, and adds soft penalties for Feller-esque wing slopes.
+- **Vol surface.** Slice-by-slice SVI fits are stitched across maturities, calendar monotonicity is enforced on a k-grid, and Breeden–Litzenberger second derivatives recover densities for diagnostics.
+
+See `docs/theory.md` for a compact derivation crib sheet (BS, Carr–Madan/Attari, SVI references to Gatheral, and how the quadrature weights tie in).
+
+## API Reference (high level)
+- **`vol::bs`** – pricing + Greeks + implied vol. Inputs: `(S,K,r,q,T,vol,bool)`. Guarantees: handles edge cases (deep ITM/OTM, tiny maturities) and returns finite Greeks.
+- **`vol::binom`** – CRR tree, European & American. Inputs: `(steps, is_call, is_american)`. Converges to BS as steps ↑ (validated tests).
+- **`vol::mc`** – GBM Monte Carlo with control variate and antithetic paths. `MCResult` reports standard error obeying √N scaling.
+- **`vol::svi`** – slice fit + `vol::svi::calibrate_slice_from_prices`. Under the hood uses the generic calibrator (`vol::calib::run_calibration`) with random restarts, L-BFGS-B style projected steps, bounds, and soft penalties.
+- **`vol::calib`** – `CalibratorConfig`, `ParameterSpec`, diagnostics (iterations, gradient norm, condition proxy). Plug-ins: BS IV (trivial), SVI slice, Heston smile. Exposed in C++ so you can inject your own objective.
+- **`vol::surface`** – `Surface` aggregates SVI slices, exposes `total_variance`, `implied_vol`, `price_option`, plus `Surface::breeden_litzenberger_density` and diagnostics (ATM term structure, skews, arbitrage flags).
+- **`vol::heston`** – CF pricing + `vol::calib::calibrate_heston_smile` to back out parameters from a smile with calendar/penalty handling near the Feller boundary.
+
+## Demos & Notebooks
+- `examples/heston_calib_demo.cpp` – generates a synthetic smile and recovers Heston params with diagnostics.
+- `examples/svi_slice_demo.cpp` – one-slice calibration.
+- `Notebooks/01_bs_vs_binom.ipynb` – binomial vs BS convergence, Greeks comparison, runtime.
+- `Notebooks/02_svi_fit.ipynb` – synthetic smile → SVI fit, residual plot.
+- `Notebooks/03_heston_pricing.ipynb` – parameter sweeps and smile impact for Heston.
 
 ## SVI Slice-by-Slice Calibration (New)
 

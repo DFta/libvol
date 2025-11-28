@@ -51,3 +51,21 @@ TEST_CASE("BS put theta vs finite diff", "[bs]") {
     REQUIRE(std::abs(g.theta - num_theta) < 1e-4);
 }
 
+TEST_CASE("BS pricing handles deep ITM/OTM and short maturities", "[bs][edge]") {
+    const double r = 1e-8;
+    const double q = 0.0;
+    const double tiny_T = 1e-4;
+    const double low_vol = 1e-3;
+
+    const double itm_call = vol::bs::price(100.0, 10.0, r, q, tiny_T, low_vol, true);
+    REQUIRE(itm_call == Catch::Approx(90.0).margin(1e-6));
+
+    const double otm_call = vol::bs::price(100.0, 180.0, 0.02, 0.0, 5e-4, 0.6, true);
+    REQUIRE(otm_call < 1e-3);
+
+    const auto greeks = vol::bs::price_greeks(100.0, 90.0, 1e-6, 1e-6, 0.2, 0.35, true);
+    REQUIRE(std::isfinite(greeks.delta));
+    REQUIRE(std::isfinite(greeks.gamma));
+    REQUIRE(std::isfinite(greeks.vega));
+}
+

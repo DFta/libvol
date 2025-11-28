@@ -22,7 +22,6 @@ TEST_CASE("Binomial pricing: American put has early exercise premium", "[binomia
     bool is_call = false;
     bool is_american = true;
 
-    //FIXED PARAM ORDER
     double american_put = vol::binom::price(S, K, r, q, T, vol, steps, is_call, is_american);
     double euro_put = vol::bs::price(S, K, r, q, T, vol, is_call);
 
@@ -35,7 +34,6 @@ TEST_CASE("Binomial pricing: Binomial euro call converges to Black_Scholes", "[b
     bool is_call = true;
     bool is_american = false;
 
-    // FIXED PARAM ORDER
     double euro_call_binom_50  = vol::binom::price(S, K, r, q, T, vol,  50, is_call, is_american);
     double euro_call_binom_100 = vol::binom::price(S, K, r, q, T, vol, 100, is_call, is_american);
     double euro_call_binom_200 = vol::binom::price(S, K, r, q, T, vol, 200, is_call, is_american);
@@ -54,8 +52,7 @@ TEST_CASE("Binomial pricing: Euro put-call parity", "[binomial]"){
     double S=100,K=100,r=0.05,q=0.02,T=1.0,vol=0.25;
     int steps = 100; 
     bool is_american = false;
-
-    // FIXED PARAM ORDER
+    
     double call = vol::binom::price(S, K, r, q, T, vol, steps, true, is_american);
     double put  = vol::binom::price(S, K, r, q, T, vol, steps, false, is_american);
 
@@ -64,4 +61,23 @@ TEST_CASE("Binomial pricing: Euro put-call parity", "[binomial]"){
     double rhs = S * std::exp(-q * T) - K * std::exp(-r * T);
 
     REQUIRE_THAT(lhs, Catch::Matchers::WithinRel(rhs, 0.01)); // 1% relative tolerance
+}
+
+TEST_CASE("Binomial convergence follows sqrt step scaling", "[binomial][convergence]") {
+    const double S = 100.0, K = 120.0, r = 0.03, q = 0.0, T = 1.25, vol = 0.35;
+    const bool is_call = false;
+    const bool is_american = false;
+    const double ref = vol::bs::price(S, K, r, q, T, vol, is_call);
+
+    const double price64  = vol::binom::price(S, K, r, q, T, vol, 64, is_call, is_american);
+    const double price256 = vol::binom::price(S, K, r, q, T, vol, 256, is_call, is_american);
+    const double price1024 = vol::binom::price(S, K, r, q, T, vol, 1024, is_call, is_american);
+
+    const double err64 = std::abs(price64 - ref);
+    const double err256 = std::abs(price256 - ref);
+    const double err1024 = std::abs(price1024 - ref);
+
+    REQUIRE(err256 < 0.8 * err64);
+    REQUIRE(err1024 < 0.8 * err256);
+    REQUIRE(err1024 < 1e-2);
 }
